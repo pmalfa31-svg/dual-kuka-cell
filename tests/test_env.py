@@ -7,7 +7,7 @@ def test_env_lifecycle():
     
     assert isinstance(obs, np.ndarray)
     assert obs.shape == (64,)
-    assert env.action_space.shape == (6,)
+    assert env.action_space.shape == (14,)
     
     action = env.action_space.sample()
     obs, reward, terminated, truncated, info = env.step(action)
