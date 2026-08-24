@@ -18,16 +18,15 @@ class IndustrialExpertPlanner:
     @staticmethod
     def _vacuum_command(env, robot_id: int, target: np.ndarray, holding: bool) -> float:
         """ON durante presa/trasporto, OFF quando siamo in posizione di deposito."""
+        p_ee = env.kinematics.get_ee_positions()[robot_id - 1]
+
         if not holding:
-            p_ee = env.kinematics.get_ee_positions()[robot_id - 1]
             p_box, _ = env.kinematics.get_box_pose()
             d_xy = np.linalg.norm(p_ee[0:2] - p_box[0:2])
             d_z = abs(p_ee[2] - (p_box[2] + 0.04))
             return 1.0 if d_xy < 0.18 and d_z < 0.12 else -1.0
 
-        # Quando l'EE e' sopra il pallet e in quota di rilascio, apri la ventosa.
-        pallet = target
-        if np.linalg.norm(p_ee[0:2] - pallet[0:2]) < 0.12 and p_ee[2] < 0.38:
+        if np.linalg.norm(p_ee[0:2] - target[0:2]) < 0.12 and p_ee[2] < 0.38:
             return -1.0
         return 1.0
 
@@ -62,7 +61,6 @@ class IndustrialExpertPlanner:
         g1 = self._vacuum_command(env, 1, self.pallet_1, holding1)
         g2 = self._vacuum_command(env, 2, self.pallet_2, holding2)
 
-        # Esattamente 14 dimensioni: [6 dq + g] x 2.
         return np.concatenate([
             a_r1, np.array([g1], dtype=np.float32),
             a_r2, np.array([g2], dtype=np.float32),
