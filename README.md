@@ -238,10 +238,9 @@ R_{latch}
 R_{transport}
 +
 R_{pallet}
-----------
-
-## R_{collision}
-
+-
+R_{collision}
+-
 R_{torque}
 ]
 
