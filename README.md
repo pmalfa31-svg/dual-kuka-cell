@@ -1,5 +1,3 @@
-Certo — te lo unifico in un **unico README.md**, eliminando la duplicazione e sistemando anche la formattazione Markdown.
-
 # Dual-KUKA Continuous Palletizing Cell
 
 ### Distributed Multi-Agent Reinforcement Learning for High-Throughput Robotic Logistics
