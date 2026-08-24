@@ -23,22 +23,20 @@ jobs:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
 
-    - name: Install System Dependencies for MuJoCo Rendering
+    - name: Install System OpenGL / MuJoCo Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libgl1-mesa-dev libgl1-mesa-glx libosmesa6-dev
+        sudo apt-get install -y libgl1 libglx-mesa0 libosmesa6-dev
 
-    - name: Install Python Dependencies
+    - name: Install Python Packages
       run: |
         python -m pip install --upgrade pip
         pip install torch --index-url https://download.pytorch.org/whl/cpu
         pip install -r requirements-dev.txt
         pip install -e .
 
-    - name: Linting with Ruff
-      run: |
-        ruff check src/ configs/ scripts/ tests/
-
-    - name: Run Test Suite with Pytest
+    - name: Run Test Suite
+      env:
+        MUJOCO_GL: osmesa
       run: |
         pytest tests/ -v

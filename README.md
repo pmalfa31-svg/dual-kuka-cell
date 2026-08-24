@@ -31,23 +31,6 @@ This project implements a production-oriented **dual-arm robotic workcell simula
 
 ## 2. Workcell Architecture
 
-```text
-                         [ Inbound Gravity Chute ]
-                              theta = 17°
-                                   |
-                                   v
-                    +-----------------------------+
-                    |       Continuous Loop       |
-                    |                             |
-      [Pallet 1] <--| [Robot 1: KUKA KR6] North   |
-                    |                             |
-                    |       Conveyor v=0.6 m/s    |
-                    |                             |
-      [Pallet 2] <--| [Robot 2: KUKA KR6] South   |
-                    |                             |
-                    +-----------------------------+
-```
-
 The simulated cell consists of a continuous oval conveyor, two robotic palletizing stations, and an inbound gravity chute.
 
 Packages enter the system through the chute, merge into the conveyor loop, circulate through the workcell, and are intercepted by the robotic agents for palletizing.

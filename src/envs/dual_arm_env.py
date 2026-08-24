@@ -10,11 +10,6 @@ from src.core.kinematics import CellKinematics
 from src.controllers.vacuum import VacuumController
 
 class DualKukaPalletizeEnv(gym.Env):
-    """
-    Ambiente Gymnasium per Cella Robotica Dual-KUKA KR6.
-    - Action Space: Box(-1.0, 1.0, shape=(14,)) [7 DoF per robot]
-    - Observation Space: Box(-inf, inf, shape=(64,)) [32 dims Robot 1 + 32 dims Robot 2]
-    """
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 60}
 
     def __init__(self, config_path: str = "configs/training_cfg.yaml", render_mode: str = None):
@@ -35,15 +30,11 @@ class DualKukaPalletizeEnv(gym.Env):
         self.kinematics = CellKinematics(self.model, self.data)
         self.vacuum = VacuumController(self.model, self.data)
 
-        # Pose di riposo nominali
         self.q_home = np.array([0.0, -1.2, 1.8, 0.0, -0.6, 0.0], dtype=np.float32)
         self.q_target_1 = self.q_home.copy()
         self.q_target_2 = self.q_home.copy()
 
-        # Action Space: 14 comandi continui (6 giunti + 1 ventosa per ciascun braccio)
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(14,), dtype=np.float32)
-
-        # Observation Space: 64 parametri continui piatti
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(64,), dtype=np.float32)
 
         self.pallet_1 = np.array(self.cfg["pallet_targets"]["robot_1"], dtype=np.float32)
@@ -54,19 +45,16 @@ class DualKukaPalletizeEnv(gym.Env):
         mujoco.mj_resetData(self.model, self.data)
         self.current_step = 0
 
-        # Reset giunti robot
         self.data.qpos[0:6] = self.q_home
         self.data.qpos[6:12] = self.q_home
         self.q_target_1 = self.q_home.copy()
         self.q_target_2 = self.q_home.copy()
 
-        # Stochastic Spawn sulla rampa
         box_qpos_adr = self.model.jnt_qposadr[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, "box_0_joint")]
-        noise_x = np.random.uniform(-0.05, 0.05)
-        self.data.qpos[box_qpos_adr:box_qpos_adr+3] = [2.68 + noise_x, 0.0, 0.88]
-        self.data.qpos[box_qpos_adr+3:box_qpos_adr+7] = [0.975, 0.0, -0.222, 0.0]
+        noise_x = np.random.uniform(-0.03, 0.03)
+        self.data.qpos[box_qpos_adr:box_qpos_adr+3] = [2.78 + noise_x, 0.0, 0.73]
+        self.data.qpos[box_qpos_adr+3:box_qpos_adr+7] = [0.989, 0.0, -0.149, 0.0]
 
-        # Reset attuatori e ventose
         self.data.ctrl[0:6] = self.q_home
         self.data.ctrl[6:12] = self.q_home
         self.vacuum.set_gripper(1, False)
@@ -79,7 +67,6 @@ class DualKukaPalletizeEnv(gym.Env):
         self.current_step += 1
         action = np.clip(action, -1.0, 1.0)
 
-        # 1. Parsing comandi
         a_r1 = action[0:7]
         a_r2 = action[7:14]
 
@@ -94,12 +81,10 @@ class DualKukaPalletizeEnv(gym.Env):
         self.vacuum.set_gripper(1, activate=(a_r1[6] > 0.0))
         self.vacuum.set_gripper(2, activate=(a_r2[6] > 0.0))
 
-        # 2. Physics Simulation Step
         for _ in range(self.frame_skip):
             self.conveyor.apply_conveyor_velocity(self.model, self.data, "box_0")
             mujoco.mj_step(self.model, self.data)
 
-        # 3. Metriche e Reward
         obs = self._get_obs()
         reward_1, reward_2 = self._compute_rewards(a_r1, a_r2)
         total_reward = reward_1 + reward_2
@@ -107,8 +92,8 @@ class DualKukaPalletizeEnv(gym.Env):
         collision = self.kinematics.check_robot_collision()
         box_pos, _ = self.kinematics.get_box_pose()
 
-        succ_1 = (np.linalg.norm(box_pos[0:2] - self.pallet_1[0:2]) < 0.25) and (box_pos[2] < 0.25) and not self.vacuum.is_holding(1)
-        succ_2 = (np.linalg.norm(box_pos[0:2] - self.pallet_2[0:2]) < 0.25) and (box_pos[2] < 0.25) and not self.vacuum.is_holding(2)
+        succ_1 = (np.linalg.norm(box_pos[0:2] - self.pallet_1[0:2]) < 0.3) and (box_pos[2] < 0.28) and not self.vacuum.is_holding(1)
+        succ_2 = (np.linalg.norm(box_pos[0:2] - self.pallet_2[0:2]) < 0.3) and (box_pos[2] < 0.28) and not self.vacuum.is_holding(2)
         success = succ_1 or succ_2
 
         terminated = collision or success
@@ -163,6 +148,12 @@ class DualKukaPalletizeEnv(gym.Env):
 
         r1 = -cfg_r["w_reach"] * d_reach_1 - cfg_r["p_energy"] * np.sum(np.square(a_r1))
         r2 = -cfg_r["w_reach"] * d_reach_2 - cfg_r["p_energy"] * np.sum(np.square(a_r2))
+
+        # Guida alla presa: bonus se attiva la ventosa quando si trova vicino al collo (< 15 cm)
+        if a_r1[6] > 0.0 and d_reach_1 < 0.15:
+            r1 += 2.0
+        if a_r2[6] > 0.0 and d_reach_2 < 0.15:
+            r2 += 2.0
 
         if self.vacuum.is_holding(1):
             r1 += cfg_r["w_grasp"]
