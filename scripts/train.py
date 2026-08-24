@@ -1,79 +1,68 @@
 import os
-import torch
+import yaml
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
+from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
-from stable_baselines3.common.monitor import Monitor
 
 from src.envs.dual_arm_env import DualKukaPalletizeEnv
 
-def make_env(rank: int, seed: int = 0):
+def make_env():
     def _init():
-        env = DualKukaPalletizeEnv()
-        env.reset(seed=seed + rank)
-        return Monitor(env)
+        return DualKukaPalletizeEnv()
     return _init
 
 def main():
-    log_dir = "logs/tensorboard/"
-    checkpoint_dir = "checkpoints/"
-    os.makedirs(log_dir, exist_ok=True)
-    os.makedirs(checkpoint_dir, exist_ok=True)
+    with open("configs/training_cfg.yaml", "r") as f:
+        cfg = yaml.safe_load(f)
 
-    # 4 ambienti paralleli per saturare i core CPU
-    num_cpu = 4
-    print(f"[*] Inizializzazione di {num_cpu} ambienti paralleli su CPU...")
-    env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
-    eval_env = SubprocVecEnv([make_env(999)])
+    os.makedirs("checkpoints", exist_ok=True)
+    os.makedirs("logs/tensorboard", exist_ok=True)
 
-    eval_callback = EvalCallback(
-        eval_env,
-        best_model_save_path=checkpoint_dir,
-        log_path=log_dir,
-        eval_freq=10000,
-        n_eval_episodes=5,
-        deterministic=True,
-        render=False
-    )
-    checkpoint_callback = CheckpointCallback(
-        save_freq=50000,
-        save_path=checkpoint_dir,
-        name_prefix="dual_kuka_ppo"
-    )
-
-    policy_kwargs = dict(
-        net_arch=dict(pi=[256, 256], vf=[256, 256]),
-        activation_fn=torch.nn.ReLU
-    )
+    num_envs = 4
+    vec_env = SubprocVecEnv([make_env() for _ in range(num_envs)])
 
     model = PPO(
-        policy="MlpPolicy",
-        env=env,
-        learning_rate=3e-4,
+        "MlpPolicy",
+        vec_env,
         n_steps=1024,
         batch_size=128,
         n_epochs=10,
         gamma=0.99,
         gae_lambda=0.95,
         clip_range=0.2,
-        ent_coef=0.005,
-        vf_coef=0.5,
-        max_grad_norm=0.5,
-        policy_kwargs=policy_kwargs,
-        verbose=1,
-        tensorboard_log=log_dir
+        ent_coef=0.01,
+        learning_rate=3e-4,
+        policy_kwargs={"net_arch": [256, 256]},
+        tensorboard_log="logs/tensorboard/",
+        verbose=1
     )
 
-    print("[*] Avvio Addestramento PPO Multi-Agent Dual-KUKA (CPU-Vectorized)...")
-    total_timesteps = 500_000
+    eval_env = DualKukaPalletizeEnv()
+    eval_callback = EvalCallback(
+        eval_env,
+        best_model_save_path="checkpoints/",
+        log_path="logs/",
+        eval_freq=5000,
+        deterministic=True,
+        render=False
+    )
+
+    checkpoint_callback = CheckpointCallback(
+        save_freq=25000,
+        save_path="checkpoints/",
+        name_prefix="kuka_ppo"
+    )
+
+    total_timesteps = 500000
+    print(f"[*] Avvio training PPO Cartesiano con Progress Bar ({total_timesteps} timesteps)...")
     model.learn(
         total_timesteps=total_timesteps,
         callback=[eval_callback, checkpoint_callback],
         progress_bar=True
     )
 
-    model.save(os.path.join(checkpoint_dir, "dual_kuka_final_model"))
-    print(f"[+] Addestramento completato. Modello salvato in {checkpoint_dir}")
+    model.save("checkpoints/final_model")
+    print("[+] Addestramento completato.")
 
 if __name__ == "__main__":
     main()
