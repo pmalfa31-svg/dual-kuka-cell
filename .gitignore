@@ -1,0 +1,22 @@
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# Python Cache & Build
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+
+# MuJoCo / RL Training artifacts pesanti
+checkpoints/*.zip
+logs/tensorboard/
+
+# OS & Editor files
+.vscode/
+.idea/
+.DS_Store
+*.swp
