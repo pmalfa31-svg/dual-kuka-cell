@@ -1,40 +1,53 @@
+﻿import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 import time
+import torch
 import numpy as np
-from src.envs.dual_arm_env import DualKukaPalletizeEnv
+import robosuite as suite
+from src.models.policy import BimanualPolicy
 
 def main():
-    env = DualKukaPalletizeEnv()
-    print("=== AVVIO STRESS TEST GYMNASIUM DUAL-KUKA CELL ===")
-    print(f"Observation Space: {env.observation_space}")
-    print(f"Action Space:      {env.action_space}")
+    print("[*] Avvio valutazione closed-loop...")
+    env = suite.make(
+        env_name="TwoArmLift",
+        robots=["IIWA", "IIWA"],
+        has_renderer=True,
+        has_offscreen_renderer=False,
+        control_freq=20,
+        horizon=150,
+        use_camera_obs=False
+    )
 
-    num_episodes = 5
-    t0 = time.time()
-    total_steps = 0
+    device = torch.device("cpu")
+    model = BimanualPolicy(obs_dim=121, action_dim=14).to(device)
+    model.load_state_dict(torch.load("data/bimanual_policy.pt", map_location=device))
+    model.eval()
 
-    for ep in range(1, num_episodes + 1):
-        obs, _ = env.reset()
-        ep_reward = 0.0
-        steps = 0
+    for ep in range(1, 4):
+        obs = env.reset()
+        print(f"\n--- Episodio {ep}/3 ---")
+        for step in range(150):
+            flat_obs = np.concatenate([
+                obs["robot0_proprio-state"],
+                obs["robot1_proprio-state"],
+                obs["object-state"]
+            ], dtype=np.float32)
 
-        while True:
-            # Azioni casuali uniformi
-            action = env.action_space.sample()
-            obs, reward, terminated, truncated, info = env.step(action)
-            ep_reward += reward
-            steps += 1
+            with torch.no_grad():
+                tensor_obs = torch.tensor(flat_obs, dtype=torch.float32).unsqueeze(0).to(device)
+                action = model(tensor_obs).squeeze(0).cpu().numpy()
 
-            if terminated or truncated:
+            obs, _, done, _ = env.step(action)
+            env.render()
+            time.sleep(0.01)
+
+            if done:
+                print(f"[+] Task completato al frame {step}!")
                 break
 
-        total_steps += steps
-        print(f"Episode {ep:02d} | Steps: {steps:03d} | Total Reward: {ep_reward:8.2f} | "
-              f"Collision: {info['collision']} | Success: {info['is_success']}")
-
-    elapsed = time.time() - t0
-    fps = total_steps / elapsed
-    print("==================================================")
-    print(f"Test Completato: {total_steps} passi in {elapsed:.2f}s (~{fps:.0f} FPS su CPU)")
+    env.close()
 
 if __name__ == "__main__":
     main()
