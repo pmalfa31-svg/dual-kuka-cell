@@ -1,0 +1,96 @@
+<mujoco model="single_arm_palletizer_cell">
+  <compiler angle="radian" autolimits="true"/>
+  <option timestep="0.005" gravity="0 0 -9.81" integrator="implicitfast"/>
+
+  <default>
+    <joint damping="2.0" armature="0.05" frictionloss="0.05"/>
+    <geom friction="1.0 0.005 0.0001" contype="1" conaffinity="1"/>
+    <default class="arm_link">
+      <geom type="capsule" rgba="0.85 0.45 0.1 1" contype="1" conaffinity="0" density="450"/>
+    </default>
+    <default class="collision_env">
+      <geom contype="1" conaffinity="1" rgba="0.6 0.6 0.6 1"/>
+    </default>
+  </default>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.65 0.75 0.85" rgb2="1 1 1" width="256" height="256"/>
+    <texture type="2d" name="grid" builtin="checker" rgb1="0.2 0.2 0.2" rgb2="0.3 0.3 0.3" width="300" height="300"/>
+    <material name="grid_mat" texture="grid" texrepeat="5 5" reflectance="0.1"/>
+  </asset>
+
+  <worldbody>
+    <light directional="true" diffuse="0.8 0.8 0.8" pos="0 0 4" dir="0 0 -1"/>
+    <geom name="floor" type="plane" size="3 3 0.1" material="grid_mat" pos="0 0 0"/>
+
+    <!-- Fixed base of the 6-DOF arm, mounted on a pedestal -->
+    <body name="pedestal" pos="0 0 0">
+      <geom name="pedestal_geom" type="cylinder" size="0.09 0.20" pos="0 0 0.20" class="collision_env" conaffinity="0"/>
+
+      <body name="link1" pos="0 0 0.40">
+        <joint name="j1_pan" type="hinge" axis="0 0 1" range="-3.05 3.05"/>
+        <geom name="link1_geom" fromto="0 0 0 0 0 0.10" size="0.07" class="arm_link"/>
+
+        <body name="link2" pos="0 0 0.10">
+          <joint name="j2_lift" type="hinge" axis="0 1 0" range="-1.6 1.6"/>
+          <geom name="link2_geom" fromto="0 0 0 0.30 0 0" size="0.06" class="arm_link"/>
+
+          <body name="link3" pos="0.30 0 0">
+            <joint name="j3_elbow" type="hinge" axis="0 1 0" range="-2.6 2.6"/>
+            <geom name="link3_geom" fromto="0 0 0 0.28 0 0" size="0.05" class="arm_link"/>
+
+            <body name="link4" pos="0.28 0 0">
+              <joint name="j4_wrist1" type="hinge" axis="0 1 0" range="-2.9 2.9"/>
+              <geom name="link4_geom" fromto="0 0 0 0.12 0 0" size="0.045" class="arm_link"/>
+
+              <body name="link5" pos="0.12 0 0">
+                <joint name="j5_wrist2" type="hinge" axis="1 0 0" range="-2.9 2.9"/>
+                <geom name="link5_geom" fromto="0 0 0 0.08 0 0" size="0.04" class="arm_link"/>
+
+                <body name="link6" pos="0.08 0 0">
+                  <joint name="j6_wrist3" type="hinge" axis="0 0 1" range="-6.28 6.28"/>
+                  <geom name="link6_geom" type="box" size="0.03 0.03 0.02" pos="0.03 0 0" class="arm_link" contype="0" conaffinity="0"/>
+                  <site name="ee_site" pos="0.07 0 0" size="0.015" rgba="0.1 0.9 0.1 1"/>
+                  <geom name="ee_marker" type="sphere" size="0.015" pos="0.07 0 0" rgba="0.1 0.9 0.1 0.6" contype="0" conaffinity="0"/>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+
+    <!-- Nastro trasportatore: attraversa PERPENDICOLARMENTE alla direzione del
+         braccio (corre lungo Y, non lungo X), come un vero nastro che passa
+         davanti alla cella robotica -->
+    <geom name="conveyor" type="box" size="0.14 0.65 0.02" pos="0.50 0 0.38" class="collision_env" rgba="0.3 0.3 0.35 1"/>
+
+    <!-- Finestra di presa: banda sottile trasversale al nastro, davanti al braccio -->
+    <geom name="pick_window_marker" type="box" size="0.14 0.08 0.001" pos="0.50 0 0.401" rgba="0.9 0.7 0.1 0.35" contype="0" conaffinity="0"/>
+
+    <!-- Zona pallet: di fianco al braccio, fuori dal nastro -->
+    <geom name="pallet_table" type="box" size="0.14 0.14 0.02" pos="0.15 -0.55 0.38" class="collision_env" rgba="0.75 0.7 0.6 1"/>
+    <geom name="target_zone" type="cylinder" size="0.09 0.001" pos="0.15 -0.55 0.401" rgba="0.1 0.6 0.9 0.5" contype="0" conaffinity="0"/>
+    <site name="target_site" pos="0.15 -0.55 0.42" size="0.01" rgba="0.1 0.6 0.9 1"/>
+
+    <!-- Package to pick up (free body) - spawna a un'estremita' del nastro (lungo Y) -->
+    <body name="package" pos="0.50 -0.60 0.44">
+      <freejoint name="package_free"/>
+      <geom name="package_geom" type="box" size="0.035 0.035 0.035" mass="0.15" rgba="0.8 0.2 0.2 1" friction="1.2 0.01 0.0001"/>
+    </body>
+  </worldbody>
+
+  <equality>
+    <!-- Suction weld between end-effector and package, inactive until the gripper "latches" -->
+    <weld name="suction_weld" body1="link6" body2="package" active="false" solimp="0.9 0.95 0.001" solref="0.015 1"/>
+  </equality>
+
+  <actuator>
+    <position name="a1" joint="j1_pan" ctrlrange="-3.05 3.05" kp="900" kv="90"/>
+    <position name="a2" joint="j2_lift" ctrlrange="-1.6 1.6" kp="220" kv="22"/>
+    <position name="a3" joint="j3_elbow" ctrlrange="-2.6 2.6" kp="150" kv="15"/>
+    <position name="a4" joint="j4_wrist1" ctrlrange="-2.9 2.9" kp="60" kv="6"/>
+    <position name="a5" joint="j5_wrist2" ctrlrange="-2.9 2.9" kp="30" kv="3"/>
+    <position name="a6" joint="j6_wrist3" ctrlrange="-6.28 6.28" kp="15" kv="1.5"/>
+  </actuator>
+</mujoco>
